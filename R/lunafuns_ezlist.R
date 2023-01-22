@@ -45,6 +45,13 @@ vec_cast.lunafuns_ezlist.double <- function(x, to, ...) lunafuns_ezlist(x)
 #' @export
 vec_cast.lunafuns_ezlist.character <- function(x, to, ...) lunafuns_ezlist(x)
 #' @export
+vec_cast.character.lunafuns_ezlist <- function(x, to, ...) {
+  sapply(x, function(z) {
+      if(is.character(z))return(z)
+      capture.output(dput(z))
+    })
+}
+#' @export
 vec_cast.lunafuns_ezlist.list <- function(x, to, ...) lunafuns_ezlist(x)
 
 #' @importFrom pillar pillar_shaft
@@ -52,7 +59,7 @@ NULL
 #' @export
 pillar_shaft.lunafuns_ezlist <- function(x, ...) {
   full_desc <- purrr::map(
-    x, function(y)paste(capture.output(invisible(dput(y))), collapse=""))
+    x, function(y)paste(utils::capture.output(invisible(dput(y))), collapse=""))
 
   pillar::new_pillar_shaft_simple(full_desc,width = 30, min_width = 8,
                                    type_sum = "ezlist")
