@@ -39,8 +39,8 @@ sbch_brms_backend <- function(..., template_data) {
 #' @return An object of class `SBC_generator_function`
 #' @export
 sbch_generator <- function(gen_fun, arg_list, ...) {
-  stopifnot({is.function(gen_fun);is.list(arg_list[[1]])})
-  do.call(SBC::SBC_generator_function, c(gen_fun, arg_list[[1]], ...))
+  stopifnot({is.function(gen_fun);is.list(arg_list)})
+  do.call(SBC::SBC_generator_function, c(gen_fun, arg_list, ...))
 }
 
 #' Adds more flexibility to the SBC generator
@@ -73,12 +73,25 @@ sbch_generate <- function(generator, n_sims = NULL, n_reps = NULL) {
   single_dataset
 }
 
-#' `compute_SBC` wrapper
+#' A concise execution of the SBC workflow
 #'
-#' @param datasets an object of class `SBC_datasets`
+#' @param arg_row a tibble row with colum names that correspond to arguments in the generator function
+#' @param n_reps,n_sims the amount of
+#' @param generator some function that produces datasets based on the values in `arg_row`
 #' @param backend model sampler made by some `SBC_backend_*`function
+#' @param keep_fits passed to `compute_SBC`, defaults to `TRUE`
+#' @param keep_data append the datasets used to the `compute_SBC` result, defaults to `FALSE`
 #'
 #' @export
-sbch_run <- function(datasets, backend) {
-  SBC::compute_SBC(datasets, backend, keep_fits = TRUE, cache_mode = "none")
+sbch_run <- function(arg_row, n_reps = NULL, n_sims = NULL,
+                     generator, backend, keep_fits = TRUE,
+                     keep_data = FALSE) {
+  unpacked_args <- purrr::map(arg_list, unlist)
+  sbc_gen <- sbch_generator(generator, unpacked_args)
+  datasets <- sbch_generate(sbc_gen, n_reps, n_sims)
+
+  sbc_obj <- SBC::compute_SBC(datasets, backend, keep_fits, cache_mode = "none")
+  if(keep_data)sbc_obj$datasets <- datasets
+
+  sbc_obj
 }

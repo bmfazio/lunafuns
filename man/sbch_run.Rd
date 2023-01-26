@@ -2,15 +2,31 @@
 % Please edit documentation in R/sbc_helpers.R
 \name{sbch_run}
 \alias{sbch_run}
-\title{\code{compute_SBC} wrapper}
+\title{A concise execution of the SBC workflow}
 \usage{
-sbch_run(datasets, backend)
+sbch_run(
+  arg_row,
+  n_reps = NULL,
+  n_sims = NULL,
+  generator,
+  backend,
+  keep_fits = TRUE,
+  keep_data = FALSE
+)
 }
 \arguments{
-\item{datasets}{an object of class \code{SBC_datasets}}
+\item{arg_row}{a tibble row with colum names that correspond to arguments in the generator function}
+
+\item{n_reps, n_sims}{the amount of}
+
+\item{generator}{some function that produces datasets based on the values in \code{arg_row}}
 
 \item{backend}{model sampler made by some \verb{SBC_backend_*}function}
+
+\item{keep_fits}{passed to \code{compute_SBC}, defaults to \code{TRUE}}
+
+\item{keep_data}{append the datasets used to the \code{compute_SBC} result, defaults to \code{FALSE}}
 }
 \description{
-\code{compute_SBC} wrapper
+A concise execution of the SBC workflow
 }
