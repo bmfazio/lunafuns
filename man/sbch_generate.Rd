@@ -4,7 +4,7 @@
 \alias{sbch_generate}
 \title{Adds more flexibility to the SBC generator}
 \usage{
-sbch_generate(generator, n_sims = NULL, n_reps = NULL)
+sbch_generate(generator, ..., n_sims = NULL, n_reps = NULL, mvbrms = TRUE)
 }
 \arguments{
 \item{generator}{SBC generator function}
@@ -12,6 +12,8 @@ sbch_generate(generator, n_sims = NULL, n_reps = NULL)
 \item{n_sims}{Number of datasets to simulate (usual behaviour)}
 
 \item{n_reps}{Number of times to repeat a single simulated dataset (for other MCMC assessment purposes)}
+
+\item{mvbrms}{\code{FALSE} will use the default \code{SBC::generate_datasets} function. By default, we use our modified version that can run multivariate \code{brms} models.}
 }
 \value{
 Datasets in the format SBC expects

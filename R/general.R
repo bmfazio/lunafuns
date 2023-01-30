@@ -1,6 +1,58 @@
 #' @export `%p0%`
 `%p0%` <- function(x, y){paste0(x, y)}
 
+update_renv <- function(){renv::purge("lunafuns");renv::hydrate()}
+
+#' Get indexes matching `y` with each value of `x`
+#'
+#' @param x,y Some vectors
+#'
+#' @return A vector of indices of elements in `y` that match `x`, in the order given by `x`
+#' @export
+#'
+#' @examples
+#' set.seed(1)
+#' which_order(c("b", "d"), sample(letters[1:4], 10, replace = TRUE))
+which_order <- function(x, y) {
+  as.vector(unlist(apply(sapply(x, `==`, y), 2, which)))
+}
+
+#' @export check_length
+check_length <- function(x, ...) {
+  if(!length(x)%in%c(...))stop("Incompatible length for " %p0%
+                                 deparse(substitute(x)))
+}
+
+#' Get the names of all LHS variables
+#'
+#' @param formula_list A list of formulas
+#'
+#' @return A character vector with the names of unique variables on each LHS, in order of appearance.
+#' @export
+#'
+#' @examples get_lhs_vars(list(y~x, z~y, w+z~x))
+get_lhs_vars <- function(formula_list) {
+  lhs <- character()
+  for(i in formula_list)lhs <- c(lhs, all.vars(i[[2]]))
+  unique(lhs)
+}
+
+#' Indicate which formulas contain `|mi()` on the LHS
+#'
+#' @param formula_list A list of formulas
+#'
+#' @return A logical vector that returns `TRUE` where `|mi()` is found in the formula's LHS.
+#' @export
+#'
+#' @examples get_lhs_mi(list(y ~ x, z | mi() ~ y, w ~ mi(y)))
+get_lhs_mi <- function(formula_list) {
+  has_mi <- logical()
+  for(i in formula_list){
+    has_mi <- c(has_mi, all(c("|", "mi()")%in%as.character(i[[2]])))
+  }
+  has_mi
+}
+
 #' Create a dependency matrix from a list of formulas
 #'
 #' @param formula_list A list containing `formula` class objects
@@ -17,20 +69,16 @@
 #'   formlst_depmat(testf)
 #' }
 formlst_depmat <- function(formula_list) {
-  lhs_vars <- character()
-  for(i in formula_list) {
-    lhs_vars <- c(lhs_vars, all.vars(i[[2]]))
-  }
-  lhs_vars <- unique(lhs_vars)
+  lhs <- get_lhs_vars(formula_list)
 
-  dep_mat<- matrix(0, nrow = length(lhs_vars), ncol = length(lhs_vars),
-                   dimnames = list(lhs_vars, lhs_vars))
+  dep_mat<- matrix(0, nrow = length(lhs), ncol = length(lhs),
+                   dimnames = list(lhs, lhs))
 
-  for(v in lhs_vars) {
-    deps <- rep(0, length(lhs_vars))
+  for(v in lhs) {
+    deps <- rep(0, length(lhs))
     for(i in formula_list) {
       if(all.vars(i[[2]]) == v) {
-        dep_i <- which(lhs_vars %in% all.vars(i[[3]]))
+        dep_i <- which(lhs %in% all.vars(i[[3]]))
         deps[dep_i] <- deps[dep_i] + 1
       }
     }

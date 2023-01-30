@@ -48,19 +48,21 @@ sbch_generator <- function(gen_fun, arg_list, ...) {
 #' @param generator SBC generator function
 #' @param n_sims Number of datasets to simulate (usual behaviour)
 #' @param n_reps Number of times to repeat a single simulated dataset (for other MCMC assessment purposes)
+#' @param mvbrms `FALSE` will use the default `SBC::generate_datasets` function. By default, we use our modified version that can run multivariate `brms` models.
 #'
 #' @return Datasets in the format SBC expects
 #' @export
-sbch_generate <- function(generator, n_sims = NULL, n_reps = NULL) {
-  # probably add way to execute both behaviors via a vector of values
-  # that determine what to do for each generator that comes in
-  # NO! actually, just detect the name of the argument coming in
+sbch_generate <- function(generator, ..., n_sims = NULL, n_reps = NULL,
+                          mvbrms = TRUE) {
   if(is.null(n_sims)&is.null(n_reps))stop("Must specify n_sims OR n_reps")
   if(!is.null(n_sims)&!is.null(n_reps))stop("Set only ONE of n_sims or n_reps")
 
-  if(!is.null(n_sims))return(SBC::generate_datasets(generator, n_sims))
+  generate_fun <- sbch_generate_mvdatasets
+  if(!mvbrms)generate_fun <- SBC::generate_datasets
 
-  single_dataset <- SBC::generate_datasets(generator, 1)
+  if(!is.null(n_sims))return(generate_fun(generator, n_sims))
+
+  single_dataset <- generate_fun(generator, 1)
 
   draws_attr <- attributes(single_dataset$variables)
   single_dataset$variables <- single_dataset$variables[rep(1, n_reps),]
@@ -95,3 +97,39 @@ sbch_run <- function(arg_row, n_reps = NULL, n_sims = NULL,
 
   sbc_obj
 }
+
+#' Modified version of `SBC::generate_datasets` that runs with multivariate `brms` models
+#'
+#' @param generator A generator built with `SBC_generator_brms`
+#' @param n_sims Number of simulated datasets to produce
+#'
+#' @return Object of class `SBC_datasets` (contains generated data and true parameter values)
+#' @export
+#'
+#' @examples print("nope")
+sbch_generate_mvdatasets <- (\(){
+  gd_tmp <- SBC:::generate_datasets.SBC_generator_brms
+  body(gd_tmp)[[10]][[4]][[3]][[4]][[3]][[2]] <- substitute({
+    generated <- brmsh_pp_iter(prior_fit_brms)
+    break
+  })
+  body(gd_tmp)[[11]] <- substitute({
+    discard_filler <- which(names(generated[[1]]) == "..FILLERforSAMPLING")
+    mi_names <- colnames(generated[[1]][,-discard_filler])
+    gen_n <- nrow(generated[[1]])
+    draws <- posterior::as_draws_matrix(prior_fit_brms$fit)
+    for(i in 1:n_sims) {
+      if (generator$generate_lp) {
+        ll <- log_lik(prior_fit_brms, newdata = generated[[i]],
+                      draw_ids = i, cores = 1)
+        log_likelihoods[i] <- sum(ll)
+      }
+      sim_values <-unlist(generated[[i]][,-discard_filler])
+      names(sim_values) <- paste0(
+        rep(paste0("Ymi_", mi_names), each = gen_n),
+        "[", 1:gen_n, "]")
+      draws[i, which_order(names(sim_values), colnames(draws))] <- sim_values
+    }
+  })
+  gd_tmp
+})()

@@ -19,16 +19,18 @@ Get fully propagated predicitons from a \code{brmsfit} object
 library(brms)
 library(dplyr)
 
-test_data <- data.frame(x = 1:5, y = 999, z1 = 0, z2 = 0)
-formulas <- bf(y ~ 0+x) + bf(z1 ~ 0+y) + bf(z2 ~ 0+y) + set_rescor(FALSE)
-get_prior(formulas, test_data) \%>\%
-arrange(resp) \%>\%
-  mutate(prior = case_when(
-    coef == "x" ~ "constant(1)", class == "sigma" ~ "normal(0, 0.1)",
-    resp == "z1" ~ "normal(100, 10)", resp == "z2" ~ "normal(-100, 10)",
-    TRUE ~ prior)) \%>\% slice(-c(1:2,5,8)) -> priors
-  pars <- brm(formulas, test_data, prior = priors, sample_prior = "only",
-            chains = 1, iter = 10500, warmup = 10000, thin = 50,
-            silent = 0, refresh = 0)
- brmsh_pp_iter(pars)
+{
+  test_data <- data.frame(x = 1:5, y = 999, z1 = 0, z2 = 0)
+  formulas <- bf(y ~ 0+x) + bf(z1 ~ 0+y) + bf(z2 ~ 0+y) + set_rescor(FALSE)
+  get_prior(formulas, test_data) \%>\%
+  arrange(resp) \%>\%
+    mutate(prior = case_when(
+      coef == "x" ~ "constant(1)", class == "sigma" ~ "normal(0, 0.1)",
+      resp == "z1" ~ "normal(100, 10)", resp == "z2" ~ "normal(-100, 10)",
+     TRUE ~ prior)) \%>\% slice(-c(1:2,5,8)) -> priors
+   pars <- brm(formulas, test_data, prior = priors, sample_prior = "only",
+              chains = 1, iter = 5150, warmup = 5000, thin = 50,
+              silent = 0, refresh = 0)
+  brmsh_pp_iter(pars)
+}
 }
