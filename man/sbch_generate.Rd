@@ -13,7 +13,7 @@ sbch_generate(generator, ..., n_sims = NULL, n_reps = NULL, mvbrms = TRUE)
 
 \item{n_reps}{Number of times to repeat a single simulated dataset (for other MCMC assessment purposes)}
 
-\item{mvbrms}{\code{FALSE} will use the default \code{SBC::generate_datasets} function. By default, we use our modified version that can run multivariate \code{brms} models.}
+\item{mvbrms}{\code{FALSE} will use the default \code{SBC::generate_datasets} function. By default, we use \code{sbch_generate_semdata}.}
 }
 \value{
 Datasets in the format SBC expects
