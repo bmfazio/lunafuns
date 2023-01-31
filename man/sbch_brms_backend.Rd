@@ -4,7 +4,7 @@
 \alias{sbch_brms_backend}
 \title{Construct \code{brms} backend for SBC}
 \usage{
-sbch_brms_backend(..., template_data)
+sbch_brms_backend(..., template_data, ..dropFILLER = TRUE)
 }
 \arguments{
 \item{...}{Arguments passed to \code{brm}}

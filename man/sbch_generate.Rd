@@ -4,7 +4,14 @@
 \alias{sbch_generate}
 \title{Adds more flexibility to the SBC generator}
 \usage{
-sbch_generate(generator, ..., n_sims = NULL, n_reps = NULL, mvbrms = TRUE)
+sbch_generate(
+  generator,
+  ...,
+  n_sims = NULL,
+  n_reps = NULL,
+  mvbrms = TRUE,
+  makena = NULL
+)
 }
 \arguments{
 \item{generator}{SBC generator function}
@@ -14,6 +21,8 @@ sbch_generate(generator, ..., n_sims = NULL, n_reps = NULL, mvbrms = TRUE)
 \item{n_reps}{Number of times to repeat a single simulated dataset (for other MCMC assessment purposes)}
 
 \item{mvbrms}{\code{FALSE} will use the default \code{SBC::generate_datasets} function. By default, we use \code{sbch_generate_semdata}.}
+
+\item{makena}{A character vector with the names of variables that will be replaced with \code{NA_real_}.}
 }
 \value{
 Datasets in the format SBC expects
