@@ -80,7 +80,8 @@ sbch_generate <- function(generator, ..., n_sims = NULL, n_reps = NULL,
 
   if(!is.null(makena)) {
     datasets$generated <- lapply(datasets$generated,
-                                 \(x){x[,which(colnames(x)%in%makena)]<-NA;x})
+                                 \(x){x[,which(colnames(x)%in%makena)]<-NA_real_;
+                                 x})
   }
 
   datasets
