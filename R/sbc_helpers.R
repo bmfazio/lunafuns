@@ -21,14 +21,9 @@ sbch_cmdstan_backend <- function(model_path, exe_path) {
 #' the backend instead.
 #'
 #' @export
-sbch_brms_backend <- function(..., template_data, ..dropFILLER = TRUE) {
+sbch_brms_backend <- function(..., template_data) {
   dots <- list(...)
-  if(is.function(dots$formula)) {
-    dots$formula <- dots$formula(template_data)
-  } else if(..dropFILLER) {
-    dots$formula[[1]] <- dots$formula[[1]][get_lhs_vars(brmsh_get_formulas(
-      dots$formula)) != "..FILLERforSAMPLING"]
-  }
+  if(is.function(dots$formula))dots$formula <- dots$formula(template_data)
   if(is.function(dots$prior))dots$prior <- dots$prior(template_data)
 
   do.call(SBC::SBC_backend_brms,

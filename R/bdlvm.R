@@ -75,6 +75,7 @@ bdlvm_brms_pregen <- function(formula, data = 1, M = 1,
         brms::bf(paste0(lv, "LVi", m, "| mi() ~ mi(", lv, ")"))
     }
   }
+  out$fit_formula <- out$formula + set_rescor(FALSE)
   if(mode == "predict"){out$formula <- out$formula + brms::bf(..FILLERforSAMPLING ~ 0)}
   out$formula <- out$formula + set_rescor(FALSE)
 
@@ -137,6 +138,6 @@ bdlvm_brms_pregen <- function(formula, data = 1, M = 1,
 
   out$refresh <- 0
 
-  out <- list(brmsargs = out, lv_names = lv_names)
+  out <- list(genargs = out, lv_names = lv_names, fit_formula = out$fit_formula)
   out
 }
