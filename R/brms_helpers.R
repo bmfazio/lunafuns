@@ -34,7 +34,7 @@ brmsh_get_formulas <- function(x) {
 brmsh_pp_iter <- function(brmsfit_obj) {
   forms_brms <- brmsh_get_formulas(brmsfit_obj$formula)
   forms_brms <- depmat_ordlist(formlst_depmat(forms_brms))
-  forms_brms[[1]] <- forms_brms[[1]][-which(forms_brms[[1]] == "..FILLERforSAMPLING")]
+  forms_brms[[1]] <- forms_brms[[1]][forms_brms[[1]] != "..FILLERforSAMPLING"]
 
   lhs_vars <- unlist(forms_brms)
   init_frame <- brmsfit_obj$data

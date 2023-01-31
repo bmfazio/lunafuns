@@ -21,9 +21,14 @@ sbch_cmdstan_backend <- function(model_path, exe_path) {
 #' the backend instead.
 #'
 #' @export
-sbch_brms_backend <- function(..., template_data) {
+sbch_brms_backend <- function(..., template_data, ..dropFILLER = TRUE) {
   dots <- list(...)
-  if(is.function(dots$formula))dots$formula <- dots$formula(template_data)
+  if(is.function(dots$formula)) {
+    dots$formula <- dots$formula(template_data)
+  } else if(..dropFILLER) {
+    dots$formula[[1]] <- dots$formula[[1]][get_lhs_vars(brmsh_get_formulas(
+      dots$formula)) != "..FILLERforSAMPLING"]
+  }
   if(is.function(dots$prior))dots$prior <- dots$prior(template_data)
 
   do.call(SBC::SBC_backend_brms,
@@ -49,30 +54,35 @@ sbch_generator <- function(gen_fun, arg_list, ...) {
 #' @param n_sims Number of datasets to simulate (usual behaviour)
 #' @param n_reps Number of times to repeat a single simulated dataset (for other MCMC assessment purposes)
 #' @param mvbrms `FALSE` will use the default `SBC::generate_datasets` function. By default, we use `sbch_generate_semdata`.
+#' @param makena A character vector with the names of variables that will be replaced with `NA_real_`.
 #'
 #' @return Datasets in the format SBC expects
 #' @export
 sbch_generate <- function(generator, ..., n_sims = NULL, n_reps = NULL,
-                          mvbrms = TRUE) {
+                          mvbrms = TRUE, makena = NULL) {
   if(is.null(n_sims)&is.null(n_reps))stop("Must specify n_sims OR n_reps")
   if(!is.null(n_sims)&!is.null(n_reps))stop("Set only ONE of n_sims or n_reps")
-
   generate_fun <- sbch_generate_semdata
   if(!mvbrms)generate_fun <- SBC::generate_datasets
 
-  if(!is.null(n_sims))return(generate_fun(generator, n_sims))
+  if(!is.null(n_sims)) {
+    datasets <- generate_fun(generator, n_sims)
+  } else {
+    datasets <- generate_fun(generator, 1)
 
-  single_dataset <- generate_fun(generator, 1)
+    draws_attr <- attributes(datasets$variables)
+    datasets$variables <- datasets$variables[rep(1, n_reps),]
+    attr(datasets$variables, "nchains") <- draws_attr$nchains
+    attr(datasets$variables, "class") <- draws_attr$class
+    attr(datasets$variables, "dimnames")$draw <- as.character(1:n_reps)
+    datasets$generated <- datasets$generated[rep(1, n_reps)]
+  }
 
-  draws_attr <- attributes(single_dataset$variables)
-  single_dataset$variables <- single_dataset$variables[rep(1, n_reps),]
-  attr(single_dataset$variables, "nchains") <- draws_attr$nchains
-  attr(single_dataset$variables, "class") <- draws_attr$class
-  attr(single_dataset$variables, "dimnames")$draw <- as.character(1:n_reps)
+  if(!is.null(makena)) {
+    lapply(datasets, \(x){x[,which(colnames(x)%in%makena)]<-NA;x})
+  }
 
-  single_dataset$generated <- single_dataset$generated[rep(1, n_reps)]
-
-  single_dataset
+  datasets
 }
 
 #' A concise execution of the SBC workflow
@@ -114,20 +124,21 @@ sbch_generate_semdata <- (\(){
     break
   })
   body(gd_tmp)[[11]] <- substitute({
-    discard_filler <- which(grepl("(..FILLERforSAMPLING)|(^.+LVi[0-9]+$)",
-                                  names(generated[[1]])))
-    mi_names <- colnames(generated[[1]][,-discard_filler])
+    nonparameter_names <- "(..FILLERforSAMPLING)|(^.+LVi[0-9]+(\\[[0-9]+\\]+)*$)"
+    drop_generated <- grepl(nonparameter_names, names(generated[[1]]))
+    lv_names <- colnames(generated[[1]][,!drop_generated,drop = FALSE])
     gen_n <- nrow(generated[[1]])
     draws <- posterior::as_draws_matrix(prior_fit_brms$fit)
+    draws <- draws[,!grepl(nonparameter_names, colnames(draws))]
     for(i in 1:n_sims) {
       if (generator$generate_lp) {
         ll <- log_lik(prior_fit_brms, newdata = generated[[i]],
                       draw_ids = i, cores = 1)
         log_likelihoods[i] <- sum(ll)
       }
-      sim_values <-unlist(generated[[i]][,-discard_filler])
+      sim_values <-unlist(generated[[i]][,!drop_generated])
       names(sim_values) <- paste0(
-        rep(paste0("Ymi_", mi_names), each = gen_n),
+        rep(paste0("Ymi_", lv_names), each = gen_n),
         "[", 1:gen_n, "]")
       draws[i, which_order(names(sim_values), colnames(draws))] <- sim_values
     }
