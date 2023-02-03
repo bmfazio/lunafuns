@@ -2,7 +2,7 @@
 % Please edit documentation in R/sbc_helpers.R
 \name{sbch_brms_backend}
 \alias{sbch_brms_backend}
-\title{Construct \code{brms} backend for SBC}
+\title{Construct \code{brms} backend for SBC with more options}
 \usage{
 sbch_brms_backend(..., template_data)
 }
@@ -16,5 +16,5 @@ helper will send the result of applying the function on \code{template_data} to
 the backend instead.}
 }
 \description{
-Construct \code{brms} backend for SBC
+The most important difference with the vanilla SBC constructor is that this will let you store the compiled model to avoid recompilation when re-running a \code{targets} pipeline.
 }

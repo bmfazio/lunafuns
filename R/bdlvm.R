@@ -1,16 +1,3 @@
-pregen_check_args <- function(f, N, M, add_i, mu, sigma,
-                              lf, noise, betas, item_mu, mode) {
-  check_length(mode, 1);
-  if(!mode%in%c("predict",
-                "estimate"))stop("mode must be 'predict' or 'estimate'")
-  L <- length(f)
-  check_length(N, 1); check_length(M, 1)
-  check_length(mu,1,L);check_length(sigma,1,L)
-  check_length(lf,1,M,L*M);check_length(noise,1,M,L*M)
-  check_length(item_mu,1,M,L*M)
-  L
-}
-
 #' Prepare arguments required for a SEM `SBC` generator via `brms`
 #'
 #' @param formula SEM formula specifying exogenous and latent variables. Any variable using the `mi()` syntax is assumed to be a latent variable and will be assigned receive priors and item variables according to the arguments that follow.
@@ -37,7 +24,7 @@ pregen_check_args <- function(f, N, M, add_i, mu, sigma,
 #'  sigma = c(10, 2, 2, 2), noise = 0.01,
 #'  explain = TRUE) -> .bdlvm_pregen_example
 #'
-#'  .bdlvm_pregen_example$formula
+#'  .bdlvm_pregen_example$genargs$formula
 #'  head(.bdlvm_pregen_example$prior, 10)
 bdlvm_brms_pregen <- function(formula, data = 1, M = 1,
                               mu = 0, sigma = 1, betas = 1,
@@ -57,7 +44,7 @@ bdlvm_brms_pregen <- function(formula, data = 1, M = 1,
   # Prepare output
   out <- list()
   # 1. Construct template dataset
-  out$data <- as.data.frame(matrix(NA_real_, nrow = N, ncol = n_lv*(1+M)))
+  out$data <- as.data.frame(matrix(0, nrow = N, ncol = n_lv*(1+M)))
   colnames(out$data) <- rep(lv_names,
                             each = M+1) %p0% c("", rep("LVi", M) %p0% 1:M)
   i_names <- colnames(out$data)[-(1+(0:(n_lv-1))*(M+1))]
@@ -75,7 +62,7 @@ bdlvm_brms_pregen <- function(formula, data = 1, M = 1,
         brms::bf(paste0(lv, "LVi", m, "| mi() ~ mi(", lv, ")"))
     }
   }
-  out$fit_formula <- out$formula + set_rescor(FALSE)
+  fit_formula <- out$formula + set_rescor(FALSE)
   if(mode == "predict"){out$formula <- out$formula + brms::bf(..FILLERforSAMPLING ~ 0)}
   out$formula <- out$formula + set_rescor(FALSE)
 
@@ -122,6 +109,7 @@ bdlvm_brms_pregen <- function(formula, data = 1, M = 1,
   out$prior[betas_idx, "prior"] <- betas
   if(mode == "predict"){out$prior[out$prior$resp == "FILLERforSAMPLING",
                                   "prior"] <- "normal(0,1.67)"}
+  out$prior$source <- "pregen"
 
   # Add explainer function if requested via explain = TRUE
   if(explain) {
@@ -138,6 +126,65 @@ bdlvm_brms_pregen <- function(formula, data = 1, M = 1,
 
   out$refresh <- 0
 
-  out <- list(genargs = out, lv_names = lv_names, fit_formula = out$fit_formula)
+  out <- list(genargs = out,
+              fit_formula = fit_formula,
+              lv_names = lv_names,
+              prior_df = (\(){
+                out_df <- out$prior[-c(mu_idx, itmu_idx),]
+                out_df <- out_df[out_df$resp != "FILLERforSAMPLING" &
+                                   out_df$prior != "",]
+
+                lf1_idx <- out_df$resp %in% i_names[1+0:(n_lv-1)*M] &
+                  out_df$coef %in% paste0("mi", lv_names)
+                out_df[lf1_idx, "source"] <- "item1_lf"
+
+                isigma_idx <- intersect(which_order(i_names, out_df$resp),
+                                        which(out_df$class %in% "sigma"))
+                out_df[isigma_idx, "prior"] <- "constant(sqrt(datavar_" %p0%
+                  i_names %p0% " - (bsp_" %p0%
+                  out_df[isigma_idx, "resp"] %p0% "[1]^2)*variance(Ymi_" %p0%
+                  rep(lv_names, each=M) %p0% ")))"
+                out_df[isigma_idx, "source"] <- "var_constraint"
+                # prior(constant(var_item1-bsp_item1[1]*sigma_lv^2), class = "sigma", resp = "item1")
+                # sigma_<LVname>: pattern for each LVs variance
+                # bsp_<itemname>[1]: pattern for each LV -> item coefficient name
+                # sigma <itemname>: pattern for each item's variance
+                # datavar_<itemname>: pattern for empirically calculated variance for stanvars
+
+                out_df <- rbind(out_df[lf1_idx,],
+                                out_df[isigma_idx,],
+                                out_df[-union(which(lf1_idx), isigma_idx),])
+                out_df
+              })(),
+              make_datavars = (function(data) {
+    var_data <- brms::stanvar(block = "functions", scode = "// Empty stanvars")
+    for(i in i_names) {
+      var_data <- var_data +
+        brms::stanvar(x = var(data[,i]),
+                      name = paste0("datavar_", i),
+                      block = "data")
+    }
+    var_data
+  }
+))
   out
+}
+
+pregen_check_args <- function(f, N, M, add_i, mu, sigma,
+                              lf, noise, betas, item_mu, mode) {
+  check_length(mode, 1);
+  if(!mode%in%c("predict",
+                "estimate"))stop("mode must be 'predict' or 'estimate'")
+  L <- length(f)
+  check_length(N, 1); check_length(M, 1)
+  check_length(mu,1,L);check_length(sigma,1,L)
+  check_length(lf,1,M,L*M);check_length(noise,1,M,L*M)
+  check_length(item_mu,1,M,L*M)
+  L
+}
+
+#' @export
+bdlvm_generate_sem <- function(pregen, ...) {
+  sbch_generate(do.call(SBC_generator_brms, pregen$genargs),
+                makena = pregen$lv_names, ...)
 }

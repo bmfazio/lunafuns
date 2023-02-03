@@ -57,6 +57,6 @@ bdlvm_brms_pregen(
  sigma = c(10, 2, 2, 2), noise = 0.01,
  explain = TRUE) -> .bdlvm_pregen_example
 
- .bdlvm_pregen_example$formula
+ .bdlvm_pregen_example$genargs$formula
  head(.bdlvm_pregen_example$prior, 10)
 }
