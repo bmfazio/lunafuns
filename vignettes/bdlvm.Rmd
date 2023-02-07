@@ -1,0 +1,76 @@
+---
+title: "bdlvm"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{bdlvm}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+An example of the complete workflow for the BDLVM functions
+
+```{r}
+suppressMessages({
+  library(brms)
+  library(lunafuns)
+})
+
+# general model setup
+base_formula <- bf(y1|mi()~1) +
+  bf(y21|mi()~mi(y1)) + bf(y22|mi()~mi(y1)) +
+  bf(y3|mi()~mi(y21)+mi(y22))
+
+model_object <- bdlvm_add_items(base_formula, data = 50, M = 5)
+
+# backend setup
+backend_object <- bdlvm_make_backend(model_object)
+
+# data generation setup
+generator_arguments <- bdlvm_add_prior(model_object)
+dataset_object <- bdlvm_generate_sem(generator_arguments, n_sims = 2)
+
+# fit mode
+fits <- bdlvm_compute_SBC(backend_object, dataset_object,
+                          global_prior = "normal(0,3)")
+```
+
+We take a look at the generated objects below.
+
+- `model_object` (one per formula unless different data/M needs to be tested)
+
+```{r}
+model_object
+```
+
+- `backend_object` (one per `model_object`)
+
+```{r}
+backend_object
+```
+
+- `generator_arguments` (as many as the number of different parameter settings we want to test)
+
+```{r}
+generator_arguments
+```
+
+- `dataset_object` (one per `generator_arguments`)
+
+```{r}
+dataset_object
+```
+
+- `fits` (one per `dataset_object` times the different fit parameters we want to test)
+
+Relevant fit parameters are the variance constraint approach used and prior passed for the rest of parameters via `global_prior` (intended as a single value but we can actually pass a vector to set everything if we are careful about matching the length and parameter order)
+
+```{r}
+fits
+```

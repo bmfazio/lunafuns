@@ -1,3 +1,8 @@
+brmsh_constprior <- function(x){
+  if(is.numeric(x))return(paste0("constant(", x, ")"))
+  x
+}
+
 #' @export
 brmsh_get_formulas <- function(x) {
   if(!"bform" %in% class(x))stop("Expected brms::bf() formula")

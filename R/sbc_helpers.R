@@ -167,7 +167,7 @@ sbch_generate_semdata <- (\(){
   gd_tmp
 })()
 
-#' @export compute_SBC_stanvars
+# dont export, called from bdlvm
 compute_SBC_stanvars <- (\(){
   func <- SBC::compute_SBC
   body(func)[[10]] <- substitute(

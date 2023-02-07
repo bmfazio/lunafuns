@@ -1,7 +1,22 @@
+update_renv <- function(){renv::purge("lunafuns");renv::hydrate()}
+
 #' @export `%p0%`
 `%p0%` <- function(x, y){paste0(x, y)}
 
-update_renv <- function(){renv::purge("lunafuns");renv::hydrate()}
+#' Get a quoted list
+#'
+#' Designed for use with `targets::tar_map()`, see https://github.com/ropensci/tarchetypes/discussions/105
+#'
+#' @param ... List contents, can be named
+#'
+#' @return An expression to create a list with the given contents
+#' @export
+#'
+#' @examples
+#'  expr1 <- qist(arg1 = 123, arg2 = letters[1:3], "done")
+#'  expr2 <- quote(list(arg1 = 123, arg2 = letters[1:3], "done"))
+#'  identical(expr1,expr2)
+qist <- function(...){substitute(list(...))}
 
 #' Get indexes matching `y` with each value of `x`
 #'
@@ -113,3 +128,4 @@ depmat_ordlist <- function(dep_mat) {
   }
   ord_list
 }
+

@@ -19,3 +19,7 @@ Imports:
     SBC,
     tibble,
     vctrs
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
