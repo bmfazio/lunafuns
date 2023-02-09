@@ -1,28 +1,38 @@
-# we start with a "model" which is given by a BASE FORMULA
-# - from the BASE FORMULA we produce FULL FORMULA + TEMPLATE DATA (OK)
-# - from the FULL FORMULA + TEMPLATE DATA we can produce a BACKEND (OK)
-# - we combine FULL FORMULA + TEMPLATE DATA with PARAMETER SPECIFICATION to
-#   produce GENERATIVE PRIORS (OK)
-# - the FULL FORMULA + TEMPLATE DATA + GENERATIVE PRIORS gives GENERATED DATA (OK)
-# - the BACKEND + GENERATED DATA/PRIORS gives us a FITTED MODEL
-
-# (BF) -> (FF)(TD) -> [(B) + (FP)]  +-> (FM)
-#           [(PS) -> (GP) -> (GD)]^
-# So we have 1 model specification (BF) and multiple possible datasets x fits
-
-
-
-#' Make a MODEL OBJECT out of a BASE FORMULA
+#' @name bdlvm
+#' @rdname bdlvm
 #'
-#' A base formula specifies only the exogenous and latent variables in a model. By passing through this function, a model object is generated, which includes a formula and template dataset with items corresponding to each latent variable added.
+#' @title `bdlvm_*` functions for streamlined model generation/fitting
+#'
+#' @description
+#' These functions have been designed with the following scenario in mind:
+#' - Someone has a specific SEM in mind they wish to test
+#' - They may want to generate data from a variety of parameter values
+#' - They may want to fit to that data using a variety of model specifications
+#'
+#' Therefore, it makes sense to break up each of those steps into different functions, so that e.g. a model needs to be specified only once, while generation and fitting are each specified separately. In the general case, then one can have a total of `S*D*F` sets of results, where `S` is the number of SEMs, `D` is the number of datasets and `F` is the number of fitting specifications.
+#'
+#' See details for the workflow in terms of specific functions. Note these package is currently designed to work solely on top of `brms` and `SBC`.
+#'
+#' @details
+#' The specific workflow is as follows:
+#' 1. Provide a description of the SEM "core" (i.e. exogenous and latent variables only) via a `brms` formula. Any variables tagged with the `mi()` function are assumed to be latent variables.
+#' 2. Feed the "base formula" into `bdlvm_add_items` to produce a model object that will have a "full formula" and template dataset that has added variables corresponding to the items for each latent variable.
+#' 3. Feed the model object to `bdlvm_make_data` together with the number of desired datasets to simulate the data (this is a SLOW STEP as it uses `brms::posterior_predict` iteratively to populate the entire graph).
+#' 4. Feed the dataset and model objects to `bdlvm_compute_SBC` in order to fit the model to each dataset via a modified version of `SBC::compute_SBC`. The same generative priors will be used for fitting by default, but see the arguments for ways to specify different priors. EXPERIMENTAL: the backend object SBC requires will be generated at this point in order to guarantee compilation of the latest model specification. YES I LEARNED THIS IN A VERY PAINFUL MANNER.
+#'
+NULL
+
+#' @describeIn bdlvm Make a MODEL OBJECT out of a BASE FORMULA
+#'
+#' @param formula `brmsformula` specifying the "core" model.
+#' @param data If there is no exogenous variables, an integer suffice to indicate you want a dataframe with the amount of rows as part of the output. Otherwise, a dataframe with the values of exogenous variables is expected and its number of rows will be used for the template data.
+#' @param M The number of items to be added on each latent variable. Currently a single number i.e. all the latent variables will get the same amount of items.
 #'
 #' @export
 #'
 #' @examples
 #' suppressMessages(library(brms))
-#' bdlvm_add_items(bf(y1|mi()~1) +
-#'   bf(y21|mi()~mi(y1)) + bf(y22|mi()~mi(y1)) +
-#'   bf(y3|mi()~mi(y21)+mi(y22)), data = 5, M = 3)
+#' bdlvm_add_items(bf(y1|mi()~1), data = 50, M = 3)
 bdlvm_add_items <- function(formula, data, M, ...) {
   # Identify LVs (formula is not checked for consistent use of mi() on RHS)
   f_list <- brmsh_get_formulas(formula)
@@ -32,9 +42,8 @@ bdlvm_add_items <- function(formula, data, M, ...) {
   # Dataframe size
   if(is.data.frame(data)){N<-nrow(data)}else{N<-data}
 
-  # Prepare output
   out <- list()
-  # 1. Construct template dataset
+  # Construct template dataset
   out$data <- as.data.frame(matrix(0, nrow = N, ncol = n_lv*(1+M)))
   colnames(out$data) <- rep(lv_names,
                             each = M+1) %p0% c("", rep("LVi", M) %p0% 1:M)
@@ -43,9 +52,8 @@ bdlvm_add_items <- function(formula, data, M, ...) {
   if(is.data.frame(data)) {
     out$data <- cbind(data[,setdiff(colnames(data), lv_names)], out$data)
   }
-  #out$data <- cbind(out$data, ..FILLERforSAMPLING = rnorm(N))
 
-  # 2. Extend formula with LV items (for now assume always add_items = TRUE)
+  # Extend formula with LV items
   out$formula <- formula
   for(lv in lv_names) {
     for(m in 1:M) {
@@ -53,66 +61,24 @@ bdlvm_add_items <- function(formula, data, M, ...) {
         brms::bf(paste0(lv, "LVi", m, "| mi() ~ mi(", lv, ")"))
     }
   }
-  #out$formula <- out$formula + set_rescor(FALSE) (leave open to allow adding more later)
-  #out$formula <- out$formula + brms::bf(..FILLERforSAMPLING ~ 0) + set_rescor(FALSE)
 
   out$lv_names <- lv_names
   out$i_names <- i_names
   out
 }
 
-#' Make a BACKEND out of a MODEL OBJECT
+#' @describeIn bdlvm Make GENERATIVE PRIORS out of a base model object (formula+data)
 #'
-#' @param model_obj Object created via bdlvm_add_items
-#' @param ... Extra arguments passed to the brms backend
-#' @param backend Stan backend choice, defaults to `"cmdstanr"`
-#' @param chains Defaults to 4
+#' @param ... Look at defaults for available parameters and defaults.
+#' @param explain Use this to print an explanation of the way order in which values with length > 1 are assigned to specific parameters.
 #'
-#' @return List with an SBC backend object, latent variable names and item names
-#' @export
-#'
-#' @examples # no
-bdlvm_make_backend <- function(model_obj, ...,
-                               backend = "cmdstanr", chains = 4) {
-
-  stanvar_func <- bdlvm_stanvar_func(model_obj)
-  backend_obj <- sbch_brms_backend(formula = model_obj$formula +
-                                     brms::set_rescor(FALSE),
-                                   template_data = model_obj$data,
-                                   backend = backend, chains = chains,
-                                   stanvars = stanvar_func, ...)
-
-  list(backend = backend_obj,
-       lv_names = model_obj$lv_names,
-       i_names = model_obj$i_names)
-}
-bdlvm_stanvar_func <- function(model_obj) {
-  function(data) {
-    var_data <- brms::stanvar(block = "functions", scode = "// Empty stanvars")
-    for(i in model_obj$i_names) {
-      var_data <- var_data +
-        brms::stanvar(x = var(data[,i]),
-                      name = paste0("datavar_", i),
-                      block = "data")
-    }
-    var_data
-  }
-}
-
-#' Make GENERATIVE PRIORS out of a base model object (formula+data)
-#'
-#' look at arguments for defaults (constant values on all parameters)
-#'
-#' @return object with edited formula and data + priors unless priors_only = TRUE
+#' @return `bdlvm_add_prior`: Object with edited formula and data + priors unless prior_only = TRUE
 #' @export
 #'
 #' @examples
 #' suppressMessages(library(brms))
-#' bdlvm_add_items(bf(y1|mi()~1) +
-#'   bf(y21|mi()~mi(y1)) + bf(y22|mi()~mi(y1)) +
-#'   bf(y3|mi()~mi(y21)+mi(y22)), data = 5, M = 3) -> sem_formula
-#'
-#'   bdlvm_add_prior(sem_formula, prior_only = TRUE)
+#' bdlvm_add_items(bf(y1|mi()~1), data = 50, M = 3) -> sem_formula
+#' bdlvm_add_prior(sem_formula, prior_only = TRUE)
 bdlvm_add_prior <- function(model_obj,
                             mu = 0, sigma = 1, betas = 1,
                             lf = 1, noise = 1, item_mu = 0,
@@ -187,30 +153,38 @@ bdlvm_add_prior <- function(model_obj,
   model_obj
 }
 
-#' @export bdlvm_generate_sem
-bdlvm_generate_sem <- function(model_obj, ...) {
+bdlvm_generate_datasets <- function(model_obj, ...) {
   generator_args <- list(formula = model_obj$formula,
                          data = model_obj$data,
                          prior = model_obj$prior)
 
+  # PENDING: set some brms values to minimise parameter correlations
   datasets <- sbch_generate(do.call(SBC::SBC_generator_brms, generator_args),
                             makena = model_obj$lv_names, ...)
 
   list(datasets = datasets, prior = model_obj$prior)
 }
 
+#' @export bdlvm_make_data
+bdlvm_make_data <- function(model_obj, ...) {
+  bdlvm_generate_datasets(bdlvm_add_prior(model_obj, ...), ...)
+}
+
 #' Title
 #'
-#' @param backend_obj
-#' @param data_obj
-#' @param varmethod
-#' @param ...
+#' Bottom text
 #'
-#' @return
-#' @export
+#' @param model_obj An object made with `bdlvm_add_items`
+#' @param data_obj An object made with `bdlvm_generate_datasets`
+#' @param ... Arguments passed to `brms::brm`
+#' @param fit_prior_args List of named arguments passed to `make_fit_prior`
+#' @param cache_mode Disabling SBC cache by default
+#' @param cache_location Disabling SBC cache by default
+#'
+#' @return Just a regular `SBC_results`-class object.
+#' @export bdlvm_compute_SBC
 #'
 #' @examples
-#' # simple example of workflow using bdlvm helpers
 #' suppressMessages({
 #'   library(brms)
 #'   library(lunafuns)
@@ -223,41 +197,59 @@ bdlvm_generate_sem <- function(model_obj, ...) {
 #'
 #' model_object <- bdlvm_add_items(base_formula, data = 5, M = 5)
 #'
-#' # backend setup
-#' backend_object <- bdlvm_make_backend(model_object)
-#'
 #' # data generation setup
 #' generator_arguments <- bdlvm_add_prior(model_object)
-#' dataset_object <- bdlvm_generate_sem(generator_arguments, n_sims = 2)
+#' dataset_object <- bdlvm_generate_datasets(generator_arguments, n_sims = 2)
 #'
-#' # fit mode
-#' fits <- bdlvm_compute_SBC(backend_object, dataset_object,
-#'                           global_prior = "normal(0,3)")
-bdlvm_compute_SBC <- function(backend_obj, data_obj, varmethod = "varmi", ...) {
+#' # fit (with a potentially different prior)
+#' fits_object <- bdlvm_compute_SBC(model_object, dataset_object,
+#'                                  fit_prior_args = list(
+#'                                    varmethod = "varmi",
+#'                                    global_prior = "normal(0,3)"
+#'                                  ))
+bdlvm_compute_SBC <- function(model_obj, data_obj, ...,
+                              fit_prior_args = list(varmethod = "varmi"),
+                              cache_mode = "none", cache_location = NULL) {
 
-  backend <- backend_obj$backend
-  backend$args$prior <- make_fitting_prior(data_obj$prior, backend_obj,
-                                           varmethod, ...)
+  backend_obj <- make_backend(model_obj, data_obj$prior, ...,
+                              fit_prior_args = fit_prior_args)
 
   compute_SBC_stanvars(
     datasets = data_obj$datasets,
-    backend = backend)
+    backend = backend_obj,
+    cache_mode = cache_mode,
+    cache_location = cache_location)
 }
-make_fitting_prior <- function(prior_obj, backend_obj, method, ...,
-                               lf1_fixto1 = TRUE, global_prior = NULL) {
+make_backend <- function(model_obj, prior_obj, ...,
+                         backend = "cmdstanr", chains = 4, stanvar_func = NULL) {
 
-  if(method == "copy")return(prior_obj)
+  fit_prior <- do.call(make_fit_prior,
+                       c(list(model_obj, prior_obj), list(...)$fit_prior_args))
+  if(is.null(stanvar_func))stanvar_func <- stanvar_func_datavar(model_obj)
 
-  lv_names <- backend_obj$lv_names
+  arg_list <- list(formula = model_obj$formula + brms::set_rescor(FALSE),
+                   template_data = model_obj$data, prior = fit_prior,
+                   backend = backend, chains = chains,
+                   stanvars = stanvar_func, ...)
+
+  do.call(sbch_brms_backend, arg_list)
+}
+make_fit_prior <- function(model_obj, prior_obj, varmethod, ...,
+                               lf1_fixto1 = TRUE, global_prior = NULL,
+                               insert_prior = NULL) {
+
+  if(varmethod == "copy")return(prior_obj)
+
+  lv_names <- model_obj$lv_names
   n_lv <- length(lv_names)
-  i_names <- backend_obj$i_names
+  i_names <- model_obj$i_names
   M <- length(i_names)/n_lv
   mu_idx <- intersect(which_order(lv_names, prior_obj$resp),
                       which(prior_obj$class == "Intercept"))
   itmu_idx <- intersect(which_order(i_names, prior_obj$resp),
                         which(prior_obj$class == "Intercept"))
 
-  out_prior <- prior_obj[-c(mu_idx, itmu_idx),]
+  out_prior <- prior_obj
   out_prior <- out_prior[out_prior$resp != "FILLERforSAMPLING" &
                            out_prior$prior != "",]
 
@@ -271,36 +263,63 @@ make_fitting_prior <- function(prior_obj, backend_obj, method, ...,
   isigma_idx <- intersect(which_order(i_names, out_prior$resp),
                           which(out_prior$class %in% "sigma"))
 
-  if(method == "varmi") {
+  if(varmethod == "varmi") {
     out_prior[isigma_idx, "prior"] <- "constant(sqrt(datavar_" %p0%
       i_names %p0% " - (bsp_" %p0% out_prior[isigma_idx, "resp"] %p0%
       "[1]^2)*variance(Ymi_" %p0% rep(lv_names, each=M) %p0% ")))"
-    out_prior[isigma_idx, "source"] <- "constraint_varLV"
-  }
-
-  if(method == "sigma") {
+    out_prior[isigma_idx, "source"] <- "varvarmethod_constrain_variance"
+  } else if(varmethod == "sigma") {
     if(length(lv_names)>1)warning("Item variance constraint is not properly implemented for dependent latent variables!")
     out_prior[isigma_idx, "prior"] <- "constant(sqrt(datavar_" %p0%
       i_names %p0% " - (bsp_" %p0% out_prior[isigma_idx, "resp"] %p0%
-      "[1]^2)*sigma_" %p0% rep(lv_names, each=M) %p0% "^2)))"
-    out_prior[isigma_idx, "source"] <- "constraint_sigmaLV"
-  }
-
-  if(method == "default") {
+      "[1]^2)*sigma_" %p0% rep(lv_names, each=M) %p0% "^2))"
+    out_prior[isigma_idx, "source"] <- "varvarmethod_constrain_sigma"
+  } else if(varmethod == "default") {
     warning("Assuming t scale as 2.5 but brms adjusts based on data!")
     out_prior[isigma_idx, "prior"] <- "student_t(3, 0, 2.5)"
-    out_prior[isigma_idx, "source"] <- "imitate_default"
+    out_prior[isigma_idx, "source"] <- "varvarmethod_imitate_default"
+  } else {
+    out_prior[isigma_idx, "prior"] <- varmethod
+    out_prior[isigma_idx, "source"] <- "varvarmethod_custom_string"
   }
 
   if(!is.null(global_prior)) {
-    out_prior[out_prior$source == "bdlvm_add_prior", "prior"] <- global_prior
+    global_idx <- out_prior$class != "Intercept" & out_prior$source == "bdlvm_add_prior"
+    out_prior[global_idx, "prior"] <- global_prior
+    out_prior[global_idx, "source"] <- "global_prior"
   }
 
-  rbind(out_prior[lf1_idx,],
-        out_prior[isigma_idx,],
-        out_prior[-union(which(lf1_idx), isigma_idx),])
-}
+  if(!is.null(insert_prior)) {
+    stopifnot(is.data.frame(insert_prior))
+    match_cols <- out_prior[,setdiff(colnames(insert_prior), "prior")]
+    not_priors <- colnames(insert_prior) != "prior"
+    for(i in 1:nrow(insert_prior)) {
+      match_rows <- apply(
+        match_cols, 1, identical, unlist(insert_prior[i, not_priors]))
 
+      out_prior[match_rows, "prior"] <- insert_prior[i, "prior"]
+      out_prior[match_rows, "source"] <- "insert_prior_row_" %p0% i
+    }
+  }
+
+  out_prior <- rbind(out_prior[lf1_idx,],
+                     out_prior[isigma_idx,],
+                     out_prior[-union(which(lf1_idx), isigma_idx),])
+
+  out_prior[out_prior$class != "Intercept" | out_prior$source != "bdlvm_add_prior", ]
+}
+stanvar_func_datavar <- function(model_obj) {
+  function(data) {
+    var_data <- brms::stanvar(block = "functions", scode = "// Empty stanvars")
+    for(i in model_obj$i_names) {
+      var_data <- var_data +
+        brms::stanvar(x = var(data[,i]),
+                      name = paste0("datavar_", i),
+                      block = "data")
+    }
+    var_data
+  }
+}
 #' Prepare arguments required for a SEM `SBC` generator via `brms`
 #'
 #' @param formula SEM formula specifying exogenous and latent variables. Any variable using the `mi()` syntax is assumed to be a latent variable and will be assigned receive priors and item variables according to the arguments that follow.

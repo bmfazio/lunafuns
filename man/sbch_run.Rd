@@ -6,6 +6,7 @@
 \usage{
 sbch_run(
   arg_row,
+  ...,
   n_reps = NULL,
   n_sims = NULL,
   generator,

@@ -4,16 +4,35 @@
 \alias{bdlvm_compute_SBC}
 \title{Title}
 \usage{
-bdlvm_compute_SBC(backend_obj, data_obj, varmethod = "varmi", ...)
+bdlvm_compute_SBC(
+  model_obj,
+  data_obj,
+  ...,
+  fit_prior_args = list(varmethod = "varmi"),
+  cache_mode = "none",
+  cache_location = NULL
+)
 }
 \arguments{
-\item{...}{}
+\item{model_obj}{An object made with \code{bdlvm_add_items}}
+
+\item{data_obj}{An object made with \code{bdlvm_generate_datasets}}
+
+\item{...}{Arguments passed to \code{brms::brm}}
+
+\item{fit_prior_args}{List of named arguments passed to \code{make_fit_prior}}
+
+\item{cache_mode}{Disabling SBC cache by default}
+
+\item{cache_location}{Disabling SBC cache by default}
+}
+\value{
+Just a regular \code{SBC_results}-class object.
 }
 \description{
-Title
+Bottom text
 }
 \examples{
-# simple example of workflow using bdlvm helpers
 suppressMessages({
   library(brms)
   library(lunafuns)
@@ -26,14 +45,14 @@ base_formula <- bf(y1|mi()~1) +
 
 model_object <- bdlvm_add_items(base_formula, data = 5, M = 5)
 
-# backend setup
-backend_object <- bdlvm_make_backend(model_object)
-
 # data generation setup
 generator_arguments <- bdlvm_add_prior(model_object)
-dataset_object <- bdlvm_generate_sem(generator_arguments, n_sims = 2)
+dataset_object <- bdlvm_generate_datasets(generator_arguments, n_sims = 2)
 
-# fit mode
-fits <- bdlvm_compute_SBC(backend_object, dataset_object,
-                          global_prior = "normal(0,3)")
+# fit (with a potentially different prior)
+fits_object <- bdlvm_compute_SBC(model_object, dataset_object,
+                                 fit_prior_args = list(
+                                   varmethod = "varmi",
+                                   global_prior = "normal(0,3)"
+                                 ))
 }
