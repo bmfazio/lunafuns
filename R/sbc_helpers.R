@@ -1,15 +1,12 @@
 #' @export sbch_dx_plot
-sbch_dx_plot <- function(x, boxplot = TRUE, scale_x = TRUE) {
+sbch_dx_plot <- function(x, scale_x = TRUE) {
   x %>%
     dplyr::mutate(p50_err = (median-simulated_value)) %>%
     tidyr::pivot_longer(cols = c(p50_err, ess_bulk, ess_tail, rhat)) %>%
-    ggplot2::ggplot(aes(x = value, y = variable)) -> p
-
-  if(boxplot)p <- p + ggplot2::geom_boxplot(outlier.shape = NA)
-
-  p <- p +
-    ggplot2::geom_jitter(width = 0.2, height = 0, alpha = 0.5) +
-    ggplot2::facet_grid(cols = vars(name), scales = "free")
+    ggplot2::ggplot(aes(x = value, y = variable, fill = setting_id)) +
+    ggplot2::geom_boxplot(aes(color = setting_id), outlier.color = NULL) +
+    ggplot2::geom_boxplot(outlier.shape = NA) +
+    ggplot2::facet_grid(cols = vars(name), scales = "free") -> p
 
   if(scale_x)p <- p + ggplot2::scale_x_continuous(trans = ggallin::ssqrt_trans)
 
