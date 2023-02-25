@@ -10,7 +10,7 @@ sbch_generate(
   n_sims = NULL,
   n_reps = NULL,
   mvbrms = TRUE,
-  makena = NULL
+  lv_names = NULL
 )
 }
 \arguments{

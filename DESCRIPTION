@@ -13,13 +13,18 @@ Imports:
     cmdstanr,
     dplyr,
     fs,
+    ggallin,
+    ggplot2,
     pillar,
     purrr,
     rlang,
     SBC,
     tibble,
+    tidyr,
     vctrs
 Suggests: 
     knitr,
     rmarkdown
 VignetteBuilder: knitr
+Depends: 
+    R (>= 2.10)

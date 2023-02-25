@@ -7,7 +7,7 @@
 sbch_generate_semdata(generator, n_sims, n_datasets = NULL)
 }
 \arguments{
-\item{generator}{A generator built with \code{bdlvm_brms_pregen} and \code{SBC_generator_brms}}
+\item{generator}{hmm}
 
 \item{n_sims}{Number of simulated datasets to produce}
 }

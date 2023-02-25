@@ -2,24 +2,10 @@
 % Please edit documentation in R/bdlvm.R
 \name{bdlvm}
 \alias{bdlvm}
-\alias{bdlvm_add_items}
-\alias{bdlvm_add_prior}
+\alias{bdlvm_model_setup}
 \title{\verb{bdlvm_*} functions for streamlined model generation/fitting}
 \usage{
-bdlvm_add_items(formula, data, M, ...)
-
-bdlvm_add_prior(
-  model_obj,
-  mu = 0,
-  sigma = 1,
-  betas = 1,
-  lf = 1,
-  noise = 1,
-  item_mu = 0,
-  explain = FALSE,
-  prior_only = FALSE,
-  ...
-)
+bdlvm_model_setup(formula, data, M)
 }
 \arguments{
 \item{formula}{\code{brmsformula} specifying the "core" model.}
@@ -27,13 +13,6 @@ bdlvm_add_prior(
 \item{data}{If there is no exogenous variables, an integer suffice to indicate you want a dataframe with the amount of rows as part of the output. Otherwise, a dataframe with the values of exogenous variables is expected and its number of rows will be used for the template data.}
 
 \item{M}{The number of items to be added on each latent variable. Currently a single number i.e. all the latent variables will get the same amount of items.}
-
-\item{...}{Look at defaults for available parameters and defaults.}
-
-\item{explain}{Use this to print an explanation of the way order in which values with length > 1 are assigned to specific parameters.}
-}
-\value{
-\code{bdlvm_add_prior}: Object with edited formula and data + priors unless prior_only = TRUE
 }
 \description{
 These functions have been designed with the following scenario in mind:
@@ -51,22 +30,17 @@ See details for the workflow in terms of specific functions. Note these package 
 The specific workflow is as follows:
 \enumerate{
 \item Provide a description of the SEM "core" (i.e. exogenous and latent variables only) via a \code{brms} formula. Any variables tagged with the \code{mi()} function are assumed to be latent variables.
-\item Feed the "base formula" into \code{bdlvm_add_items} to produce a model object that will have a "full formula" and template dataset that has added variables corresponding to the items for each latent variable.
+\item Feed the "base formula" into \code{bdlvm_model_setup} to produce a model object that will have a "full formula" and template dataset that has added variables corresponding to the items for each latent variable.
 \item Feed the model object to \code{bdlvm_make_data} together with the number of desired datasets to simulate the data (this is a SLOW STEP as it uses \code{brms::posterior_predict} iteratively to populate the entire graph).
-\item Feed the dataset and model objects to \code{bdlvm_compute_SBC} in order to fit the model to each dataset via a modified version of \code{SBC::compute_SBC}. The same generative priors will be used for fitting by default, but see the arguments for ways to specify different priors. EXPERIMENTAL: the backend object SBC requires will be generated at this point in order to guarantee compilation of the latest model specification. YES I LEARNED THIS IN A VERY PAINFUL MANNER.
+\item Feed the dataset and model objects to \code{bdlvm_compute} in order to fit the model to each dataset via a modified version of \code{SBC::compute_SBC}. The same generative priors will be used for fitting by default, but see the arguments for ways to specify different priors. EXPERIMENTAL: the backend object SBC requires will be generated at this point in order to guarantee compilation of the latest model specification. YES I LEARNED THIS IN A VERY PAINFUL MANNER.
 }
 }
 \section{Functions}{
 \itemize{
-\item \code{bdlvm_add_items()}: Make a MODEL OBJECT out of a BASE FORMULA
-
-\item \code{bdlvm_add_prior()}: Make GENERATIVE PRIORS out of a base model object (formula+data)
+\item \code{bdlvm_model_setup()}: Make a MODEL OBJECT out of a BASE FORMULA
 
 }}
 \examples{
 suppressMessages(library(brms))
-bdlvm_add_items(bf(y1|mi()~1), data = 50, M = 3)
-suppressMessages(library(brms))
-bdlvm_add_items(bf(y1|mi()~1), data = 50, M = 3) -> sem_formula
-bdlvm_add_prior(sem_formula, prior_only = TRUE)
+bdlvm_model_setup(bf(y1|mi()~1), data = 50, M = 3)
 }

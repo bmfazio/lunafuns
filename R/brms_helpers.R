@@ -7,8 +7,7 @@ brmsh_constprior <- function(x){
 brmsh_get_formulas <- function(x) {
   if(!"bform" %in% class(x))stop("Expected brms::bf() formula")
   if(is.null(x$forms))return(list(x$formula))
-  x <- unlist(x$forms)
-  x[which(sapply(x, rlang::is_formula))]
+  sapply(x$forms, (\(y)y$formula))
 }
 
 #' Get fully propagated predicitons from a `brmsfit` object
