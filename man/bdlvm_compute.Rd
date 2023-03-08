@@ -10,7 +10,7 @@ bdlvm_compute(
   ...,
   debug_mode = FALSE,
   priors = NULL,
-  var_constraint = TRUE,
+  var_constraint = FALSE,
   cache_mode = "none",
   cache_location = NULL
 )

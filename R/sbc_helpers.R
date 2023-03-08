@@ -4,7 +4,8 @@ sbch_dx_plot <- function(x, scale_x = TRUE) {
     dplyr::mutate(p50_err = (median-simulated_value)) %>%
     tidyr::pivot_longer(cols = c(p50_err, ess_bulk, ess_tail, rhat)) %>%
     ggplot2::ggplot(aes(x = value, y = variable, fill = setting_id)) +
-    ggplot2::geom_boxplot(aes(color = setting_id), outlier.color = NULL) +
+    ggplot2::geom_boxplot(aes(color = setting_id), alpha = 0.33,
+                          outlier.color = NULL) +
     ggplot2::geom_boxplot(outlier.shape = NA) +
     ggplot2::facet_grid(cols = vars(name), scales = "free") -> p
 
@@ -78,7 +79,7 @@ sbch_generator <- function(gen_fun, arg_list, ...) {
 #' @return Datasets in the format SBC expects
 #' @export
 sbch_generate <- function(generator, ..., n_sims = NULL, n_reps = NULL,
-                          mvbrms = TRUE, lv_names = NULL) {
+                          mvbrms = TRUE) {
   if(is.null(n_sims)&is.null(n_reps))stop("Must specify n_sims OR n_reps")
   if(!is.null(n_sims)&!is.null(n_reps))stop("Set only ONE of n_sims or n_reps")
   generate_fun <- sbch_generate_semdata
@@ -96,13 +97,6 @@ sbch_generate <- function(generator, ..., n_sims = NULL, n_reps = NULL,
     attr(datasets$variables, "class") <- draws_attr$class
     attr(datasets$variables, "dimnames")$draw <- as.character(1:n_reps)
     datasets$generated <- datasets$generated[rep(1, n_reps)]
-  }
-
-  if(!is.null(lv_names)) {
-    datasets$generated <- lapply(datasets$generated,
-                                 \(x){x[,which(colnames(x) %in%
-                                                 lv_names)] <- NA_real_
-                                 x})
   }
 
   datasets

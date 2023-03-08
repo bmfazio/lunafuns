@@ -34,6 +34,9 @@ NULL
 #' suppressMessages(library(brms))
 #' bdlvm_model_setup(bf(y1|mi()~1), data = 50, M = 3)
 bdlvm_model_setup <- function(formula, data, M) {
+  # This is a separate step from data generation in case one wishes to
+  # add actual mi() variables to the model,
+
   # Identify LVs (formula is not checked for consistent use of mi() on RHS)
   f_list <- brmsh_get_formulas(formula)
   lv_names <- get_lhs_vars(f_list)[get_lhs_mi(f_list)]
@@ -201,13 +204,23 @@ bdlvm_generate_datasets <- function(model_obj, ...) {
                          thin = 50, warmup = 10000, refresh = 5000)
 
   dots <- list(...)
-  if(is.null(dots$lv_names))dots$lv_names <- model_obj$lv_names
 
-  # PENDING: set some brms values to minimise parameter correlations
   generator <- list(do.call(SBC::SBC_generator_brms, generator_args))
   datasets <- do.call(sbch_generate, c(generator, dots))
 
-  list(datasets = datasets, prior = model_obj$prior)
+  if(is.null(dots$lv_names))dots$lv_names <- model_obj$lv_names
+  lv_names <- dots$lv_names
+
+  generated <- purrr::list_transpose(lapply(
+    datasets$generated, \(x) {
+      lv_values <- x[,which(colnames(x) %in% lv_names), drop = FALSE]
+      x[,which(colnames(x) %in% lv_names)] <- NA_real_
+      list(data = x, lv_values = lv_values)}
+    ))
+
+  datasets$generated <- generated$data
+
+  list(datasets = datasets, lv_values = generated$lv_values, prior = model_obj$prior)
 }
 
 #' Title
@@ -257,7 +270,7 @@ bdlvm_generate_datasets <- function(model_obj, ...) {
 #'                                global = "normal(0,5)"
 #'                              ))
 bdlvm_compute <- function(model_obj, data_obj, ..., debug_mode = FALSE,
-                          priors = NULL, var_constraint = TRUE,
+                          priors = NULL, var_constraint = FALSE,
                           cache_mode = "none", cache_location = NULL) {
 
   backend_obj <- make_backend(model_obj, data_obj$prior, ...,
@@ -382,4 +395,63 @@ stanvar_func_datavar <- function(model_obj) {
     }
     var_data
   }
+}
+
+# some starters for SBC-style dx extraction from blavaan fits:
+# summary(cfa_blav_fits[[1]])
+# lapply(as_draws_rvars(cfa_blav_fits[[1]]@external$mcmcout), posterior::ess_tail)
+# https://stats.stackexchange.com/questions/366490/how-to-identify-a-bayesian-sem-parameter-in-r-package-blavaan
+#
+# my_tidymap <- function(x,y,tf=broom::tidy) {
+#   bind_cols(sim_desc = y,
+#             map_dfr(x, tf, .id = "sim_id")) %>%
+#     mutate(term = gsub(" ", "", term))
+# }
+# my_bltidy <- function(x) {
+#   rhat <- blavInspect(x, what = "rhat") %>% tibble(term = names(.), rhat = .)
+#   neff <- blavInspect(x, what = "neff") %>% tibble(term = names(.), neff = .)
+#   broom::tidy(x) %>%
+#     mutate(term = gsub(" ", "", term)) %>%
+#     left_join(rhat, by = "term") %>% left_join(neff, by = "term")
+# }
+
+#' @export
+bdlvm_format <- function(x, ...) {
+  UseMethod("bdlvm_format", x)
+}
+
+#' @method
+#' @export
+bdlvm_format.list <- function(x, ...) {
+  x <- purrr::map(x, bdlvm_format, ...)
+  purrr::map2(x, seq_along(x), \(x, y)dplyr::bind_cols(sim_id = y, x))
+}
+
+#' @method
+#' @export
+bdlvm_format.lavaan <- function(fit_obj, model_obj) {
+
+  lv_names <- model_obj$lv_names
+  i_names <- model_obj$i_names
+
+  partable(fit_obj)[,c("lhs", "op", "rhs", "pxnames", "mat", "free", "est")] %>%
+    dplyr::group_by(mat) %>%
+    dplyr::transmute(lhs, op, rhs,
+                     est = ifelse(free == 0, est, NA_real_),
+                     variable = pxnames, pardim = dplyr::n()) %>%
+    dplyr::mutate(variable = ifelse(pardim!=1, variable, gsub(".{3}$", "", variable))) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-mat, -pardim) %>%
+    dplyr::left_join(summary(posterior::as_draws_rvars(fit_obj@external$mcmcout)),
+                     by = "variable") %>%
+    dplyr::transmute(variable = dplyr::case_when(
+      op == "=~" & lhs %in% lv_names ~ "bsp_" %p0% rhs %p0% "_mi" %p0% lhs,
+      op == "~1" & lhs %in% c(lv_names, i_names) ~ "b_" %p0% lhs %p0% "_Intercept",
+      op == "~~" & lhs %in% c(lv_names, i_names) & lhs == rhs ~ "sigma_" %p0% lhs,
+      op == "~" & lhs %in% lv_names ~ "bsp_" %p0% lhs %p0% "_mi" %p0% rhs,
+      TRUE ~ paste(lhs, op, rhs)),
+      mean = dplyr::coalesce(est, mean), median = dplyr::coalesce(est, median),
+      sd = ifelse(is.na(est), 0, sd), mad = ifelse(is.na(est), 0, mad),
+      q5 = dplyr::coalesce(est, q5), q95 = dplyr::coalesce(est, q95),
+      rhat, ess_bulk, ess_tail)
 }

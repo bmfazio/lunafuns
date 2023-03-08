@@ -4,14 +4,7 @@
 \alias{sbch_generate}
 \title{Adds more flexibility to the SBC generator}
 \usage{
-sbch_generate(
-  generator,
-  ...,
-  n_sims = NULL,
-  n_reps = NULL,
-  mvbrms = TRUE,
-  lv_names = NULL
-)
+sbch_generate(generator, ..., n_sims = NULL, n_reps = NULL, mvbrms = TRUE)
 }
 \arguments{
 \item{generator}{SBC generator function}
