@@ -3,6 +3,12 @@ update_renv <- function(){renv::purge("lunafuns");renv::hydrate()}
 #' @export `%p0%`
 `%p0%` <- function(x, y){paste0(x, y)}
 
+#' @export ford
+ford <- function(...){
+  x <- c(...)
+  factor(x, levels = unique(x), ordered = TRUE)
+}
+
 #' Get a quoted list
 #'
 #' Designed for use with `targets::tar_map()`, see https://github.com/ropensci/tarchetypes/discussions/105
