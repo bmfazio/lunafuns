@@ -406,8 +406,8 @@ bdlvm_lavaan <- function(formula, model_obj, data_obj, ...) {
 }
 
 #' @export
-bdlvm_blavaan <- function(formula, model_obj, data_obj,
-                          bcontrol = list(parallel::detectCores()), ...) {
+bdlvm_blavaan <- function(formula, model_obj, data_obj, ...,
+                          bcontrol = list(cores = parallel::detectCores(), refresh = 0)) {
   fit_obj <- \(x)blavaan::blavaan(formula, data = x, bcontrol = bcontrol, ...)
   data_obj$datasets$generated <- purrr::map(data_obj$datasets$generated,
                                             \(x)x[,!names(x) %in% model_obj$lv_names])
@@ -416,7 +416,7 @@ bdlvm_blavaan <- function(formula, model_obj, data_obj,
 
 #' @export
 bdlvm_fit <- function(fit_obj, data_obj, ...) {
-  fits <- purrr::map(data_obj$generated, fit_obj)
+  fits <- purrr::map(data_obj$generated, fit_obj, .progress = TRUE)
 
   stats <- full_join(
     tibble::tibble(
