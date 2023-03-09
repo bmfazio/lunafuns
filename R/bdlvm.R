@@ -397,23 +397,38 @@ stanvar_func_datavar <- function(model_obj) {
   }
 }
 
-# some starters for SBC-style dx extraction from blavaan fits:
-# summary(cfa_blav_fits[[1]])
-# lapply(as_draws_rvars(cfa_blav_fits[[1]]@external$mcmcout), posterior::ess_tail)
-# https://stats.stackexchange.com/questions/366490/how-to-identify-a-bayesian-sem-parameter-in-r-package-blavaan
-#
-# my_tidymap <- function(x,y,tf=broom::tidy) {
-#   bind_cols(sim_desc = y,
-#             map_dfr(x, tf, .id = "sim_id")) %>%
-#     mutate(term = gsub(" ", "", term))
-# }
-# my_bltidy <- function(x) {
-#   rhat <- blavInspect(x, what = "rhat") %>% tibble(term = names(.), rhat = .)
-#   neff <- blavInspect(x, what = "neff") %>% tibble(term = names(.), neff = .)
-#   broom::tidy(x) %>%
-#     mutate(term = gsub(" ", "", term)) %>%
-#     left_join(rhat, by = "term") %>% left_join(neff, by = "term")
-# }
+#' @export
+bdlvm_lavaan <- function(formula, model_obj, data_obj, ...) {
+  fit_obj <- \(x)lavaan::lavaan(formula, data = x, ...)
+  data_obj$datasets$generated <- purrr::map(data_obj$datasets$generated,
+                                            \(x)x[,!names(x) %in% model_obj$lv_names])
+  bdlvm_fit(fit_obj, data_obj$datasets, model_obj)
+}
+
+#' @export
+bdlvm_blavaan <- function(formula, model_obj, data_obj,
+                          bcontrol = list(parallel::detectCores()), ...) {
+  fit_obj <- \(x)blavaan::blavaan(formula, data = x, bcontrol = bocontrol, ...)
+  data_obj$datasets$generated <- purrr::map(data_obj$datasets$generated,
+                                            \(x)x[,!names(x) %in% model_obj$lv_names])
+  bdlvm_fit(fit_obj, data_obj$datasets, model_obj)
+}
+
+#' @export
+bdlvm_fit <- function(fit_obj, data_obj, ...) {
+  fits <- purrr::map(data_obj$generated, fit_obj)
+
+  stats <- full_join(
+    tibble::tibble(
+      sim_id = rep(seq_along(fits), each = ncol(d_cfa_n50$datasets$variables)),
+      variable = rep(colnames(d_cfa_n50$datasets$variables), times = length(fits)),
+      simulated_value = as.vector(t(d_cfa_n50$datasets$variables))
+    ),
+    bdlvm_format(fits, ...),
+    by = c("sim_id", "variable"))
+
+  list(stats = stats, fits = fits)
+}
 
 #' @export
 bdlvm_format <- function(x, ...) {
@@ -424,13 +439,12 @@ bdlvm_format <- function(x, ...) {
 #' @export
 bdlvm_format.list <- function(x, ...) {
   x <- purrr::map(x, bdlvm_format, ...)
-  purrr::map2(x, seq_along(x), \(x, y)dplyr::bind_cols(sim_id = y, x))
+  dplyr::bind_rows(purrr::map2(x, seq_along(x), \(x, y)dplyr::bind_cols(sim_id = y, x)))
 }
 
 #' @method
 #' @export
-bdlvm_format.lavaan <- function(fit_obj, model_obj) {
-
+bdlvm_format.blavaan <- function(fit_obj, model_obj) {
   lv_names <- model_obj$lv_names
   i_names <- model_obj$i_names
 
@@ -454,4 +468,20 @@ bdlvm_format.lavaan <- function(fit_obj, model_obj) {
       sd = ifelse(is.na(est), 0, sd), mad = ifelse(is.na(est), 0, mad),
       q5 = dplyr::coalesce(est, q5), q95 = dplyr::coalesce(est, q95),
       rhat, ess_bulk, ess_tail)
+}
+
+#' @method
+#' @export
+bdlvm_format.lavaan <- function(fit_obj, model_obj) {
+
+  lv_names <- model_obj$lv_names
+  i_names <- model_obj$i_names
+
+  partable(fit_obj)[,c("lhs", "op", "rhs", "free", "est", "se")] %>%
+    dplyr::transmute(variable = dplyr::case_when(
+      op == "=~" & lhs %in% lv_names ~ "bsp_" %p0% rhs %p0% "_mi" %p0% lhs,
+      op == "~1" & lhs %in% c(lv_names, i_names) ~ "b_" %p0% lhs %p0% "_Intercept",
+      op == "~~" & lhs %in% c(lv_names, i_names) & lhs == rhs ~ "sigma_" %p0% lhs,
+      op == "~" & lhs %in% lv_names ~ "bsp_" %p0% lhs %p0% "_mi" %p0% rhs,
+      TRUE ~ paste(lhs, op, rhs)), mean = est, sd = se)
 }
