@@ -408,7 +408,7 @@ bdlvm_lavaan <- function(formula, model_obj, data_obj, ...) {
 #' @export
 bdlvm_blavaan <- function(formula, model_obj, data_obj,
                           bcontrol = list(parallel::detectCores()), ...) {
-  fit_obj <- \(x)blavaan::blavaan(formula, data = x, bcontrol = bocontrol, ...)
+  fit_obj <- \(x)blavaan::blavaan(formula, data = x, bcontrol = bcontrol, ...)
   data_obj$datasets$generated <- purrr::map(data_obj$datasets$generated,
                                             \(x)x[,!names(x) %in% model_obj$lv_names])
   bdlvm_fit(fit_obj, data_obj$datasets, model_obj)
