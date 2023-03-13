@@ -397,7 +397,7 @@ stanvar_func_datavar <- function(model_obj) {
   }
 }
 
-#' @export
+#' @export bdlvm_lavaan
 bdlvm_lavaan <- function(formula, model_obj, data_obj, ...) {
   fit_obj <- \(x)lavaan::lavaan(formula, data = x, ...)
   data_obj$datasets$generated <- purrr::map(data_obj$datasets$generated,
@@ -405,50 +405,76 @@ bdlvm_lavaan <- function(formula, model_obj, data_obj, ...) {
   bdlvm_fit(fit_obj, data_obj$datasets, model_obj)
 }
 
-#' @export
+#' @export bdlvm_blavaan
 bdlvm_blavaan <- function(formula, model_obj, data_obj, ...,
-                          bcontrol = list(cores = parallel::detectCores(), refresh = 0)) {
-  fit_obj <- \(x)blavaan::blavaan(formula, data = x, bcontrol = bcontrol, ...)
+                          n.chains = 4, bcontrol = list(refresh = 0)) {
+  fit_obj <- \(x)blavaan::blavaan(formula, data = x,
+                                  n.chains = n.chains, bcontrol = bcontrol, ...)
   data_obj$datasets$generated <- purrr::map(data_obj$datasets$generated,
                                             \(x)x[,!names(x) %in% model_obj$lv_names])
   bdlvm_fit(fit_obj, data_obj$datasets, model_obj)
 }
 
-#' @export
+#' @export bdlvm_fit
 bdlvm_fit <- function(fit_obj, data_obj, ...) {
   fits <- purrr::map(data_obj$generated, fit_obj, .progress = TRUE)
 
-  stats <- full_join(
+  stats <- dplyr::full_join(
     tibble::tibble(
-      sim_id = rep(seq_along(fits), each = ncol(d_cfa_n50$datasets$variables)),
-      variable = rep(colnames(d_cfa_n50$datasets$variables), times = length(fits)),
-      simulated_value = as.vector(t(d_cfa_n50$datasets$variables))
+      sim_id = rep(seq_along(fits), each = ncol(data_obj$variables)),
+      variable = rep(colnames(data_obj$variables), times = length(fits)),
+      simulated_value = as.vector(t(data_obj$variables))
     ),
-    bdlvm_format(fits, ...),
+    bdlvm_get_stats(fits, ...),
     by = c("sim_id", "variable"))
 
-  list(stats = stats, fits = fits)
+  backend_diagnostics <- bdlvm_get_backdiag(fits)
+
+  list(stats = stats, fits = fits, backend_diagnostics = backend_diagnostics)
 }
 
-#' @export
-bdlvm_format <- function(x, ...) {
-  UseMethod("bdlvm_format", x)
+bdlvm_get_backdiag <- function(x, ...) {
+  UseMethod("bdlvm_get_backdiag", x)
 }
 
-#' @method
+#' @method bdlvm_get_backdiag list
 #' @export
-bdlvm_format.list <- function(x, ...) {
-  x <- purrr::map(x, bdlvm_format, ...)
+bdlvm_get_backdiag.list <- function(x, ...) {
+  x <- purrr::map(x, bdlvm_get_backdiag, ...)
   dplyr::bind_rows(purrr::map2(x, seq_along(x), \(x, y)dplyr::bind_cols(sim_id = y, x)))
 }
 
-#' @method
+#' @method bdlvm_get_backdiag blavaan
 #' @export
-bdlvm_format.blavaan <- function(fit_obj, model_obj) {
+bdlvm_get_backdiag.blavaan <- function(x, ...) {
+  fit <- x@external$mcmcout
+  data.frame(max_chain_time = max(rowSums(rstan::get_elapsed_time(fit))),
+             n_divergent = rstan::get_num_divergent(fit), n_max_treedepth = rstan::get_num_max_treedepth(fit),
+             min_bfmi = min(rstan::get_bfmi(fit)))
+}
+
+#' @method bdlvm_get_backdiag lavaan
+#' @export
+bdlvm_get_backdiag.lavaan <- function(x, ...)lavaan::inspect(x, what = "timing")$total
+
+bdlvm_get_stats <- function(x, ...) {
+  UseMethod("bdlvm_get_stats", x)
+}
+
+#' @method bdlvm_get_stats list
+#' @export
+bdlvm_get_stats.list <- function(x, ...) {
+  x <- purrr::map(x, bdlvm_get_stats, ...)
+  dplyr::bind_rows(purrr::map2(x, seq_along(x), \(x, y)dplyr::bind_cols(sim_id = y, x)))
+}
+
+#' @method bdlvm_get_stats blavaan
+#' @export
+bdlvm_get_stats.blavaan <- function(fit_obj, model_obj) {
   lv_names <- model_obj$lv_names
   i_names <- model_obj$i_names
 
-  partable(fit_obj)[,c("lhs", "op", "rhs", "pxnames", "mat", "free", "est")] %>%
+  lavaan::partable(fit_obj)[,c("lhs", "op", "rhs", "pxnames", "mat", "free", "est")] %>%
     dplyr::group_by(mat) %>%
     dplyr::transmute(lhs, op, rhs,
                      est = ifelse(free == 0, est, NA_real_),
@@ -470,18 +496,26 @@ bdlvm_format.blavaan <- function(fit_obj, model_obj) {
       rhat, ess_bulk, ess_tail)
 }
 
-#' @method
+#' @method bdlvm_get_stats lavaan
 #' @export
-bdlvm_format.lavaan <- function(fit_obj, model_obj) {
+bdlvm_get_stats.lavaan <- function(fit_obj, model_obj) {
 
   lv_names <- model_obj$lv_names
   i_names <- model_obj$i_names
 
-  partable(fit_obj)[,c("lhs", "op", "rhs", "free", "est", "se")] %>%
+  lavaan::partable(fit_obj)[,c("lhs", "op", "rhs", "free", "est", "se")] %>%
     dplyr::transmute(variable = dplyr::case_when(
       op == "=~" & lhs %in% lv_names ~ "bsp_" %p0% rhs %p0% "_mi" %p0% lhs,
       op == "~1" & lhs %in% c(lv_names, i_names) ~ "b_" %p0% lhs %p0% "_Intercept",
       op == "~~" & lhs %in% c(lv_names, i_names) & lhs == rhs ~ "sigma_" %p0% lhs,
       op == "~" & lhs %in% lv_names ~ "bsp_" %p0% lhs %p0% "_mi" %p0% rhs,
       TRUE ~ paste(lhs, op, rhs)), mean = est, sd = se)
+}
+
+#' @export bldvm_parametric_constraint
+bldvm_parametric_constraint <- function(lv_names, M) {
+  "constant(sqrt(datavar_" %p0%
+    lv_names %p0% "LVi" %p0% 1:M %p0%
+    " - (bsp_" %p0% lv_names %p0% "LVi" %p0% 1:M %p0%
+    "[1]^2)*sigma_" %p0% lv_names %p0% "^2))"
 }

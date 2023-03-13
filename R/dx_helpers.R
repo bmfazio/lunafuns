@@ -1,20 +1,63 @@
-#' @export dxh_statsp
-dxh_statsp <- function(x, dx = c("rhat", "ess_bulk", "ess_tail")) {
-  names(dx) <- dx
-  x <- dxh_prep_stats(x)
+dxh_get_num_chains <- function(x, ...) {
+  UseMethod("dxh_get_num_chains", x)
+}
 
-  list( # make function specification flexible to add/remove plots at will
-    heat = lapply(dx, (\(y)dxh_heat(x, y))),
-    boxp = lapply(dx, (\(y)dxh_boxp(x, y)))
-  )
+#' @method dxh_get_num_chains brmsfit
+#' @export
+dxh_get_num_chains.brmsfit <- function(x, ...)x$fit@sim$chains
+
+#' @method dxh_get_num_chains blavaan
+#' @export
+dxh_get_num_chains.blavaan <- function(x, ...)x@external$mcmcout@sim$chains
+
+#' @method dxh_get_num_chains lavaan
+#' @export
+dxh_get_num_chains.lavaan <- function(x, ...) {
+  conv <- lavaan::inspect(x, what = "converged")
+  if(conv)return(NA)
+  0
+}
+
+#' @export dxh_fits_summary
+dxh_fits_summary <- function(...) {
+  dots <- list(...)
+  n <- length(dots)
+  if(n%%2 == 1)stop("Even number of arguments required (name:fit pairs)")
+
+  n <- seq_len(n)
+  sim_desc <- as.character(dots[n%%2 == 1])
+  stats <- purrr::map(dots[n%%2 == 0], \(x)x$stats)
+  backend <- purrr::map(dots[n%%2 == 0], \(x) {
+    tibble::tibble(
+      sim_id = seq_along(x$fits),
+      successful_chains = purrr::map_int(x$fits, \(y) {
+        if(is.null(y))return(0)
+        dxh_get_num_chains(y)
+      })
+    ) %>%
+      dplyr::left_join(x$backend_diagnostics, by = "sim_id")
+  })
+
+  joined_stats <- dplyr::mutate(dplyr::bind_rows(
+    purrr::map2(sim_desc, stats, \(x,y)dplyr::bind_cols(sim_desc = x, y))
+  ), sim_desc = ford(sim_desc))
+  joined_backend <- dplyr::mutate(dplyr::bind_rows(
+    purrr::map2(sim_desc, backend, \(x,y)dplyr::bind_cols(sim_desc = x, y))
+  ), sim_desc = ford(sim_desc))
+
+  list(backend_dx = joined_backend, fit_dx = joined_stats)
 }
 
 #' @export dxh_prep_stats
 dxh_prep_stats <- function(x) {
-  if(is.null(x$sim_desc))x$sim_desc <- ""
+  if(!"sim_desc" %in% names(x)) {
+    warning("sim_desc column not found, assuming all stats belongs to same sim")
+    x$sim_desc <- ""
+  }
   x %>%
     dplyr::transmute(
       sim_desc, variable,
+      bias = mean - simulated_value,
       rhat, ess_bulk, ess_tail) %>%
     tidyr::pivot_longer(!c(sim_desc, variable)) %>%
     dplyr::group_by(sim_desc, variable, name) %>%
