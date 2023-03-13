@@ -455,7 +455,7 @@ bdlvm_get_backdiag.blavaan <- function(x, ...) {
 
 #' @method bdlvm_get_backdiag lavaan
 #' @export
-bdlvm_get_backdiag.lavaan <- function(x, ...)lavaan::inspect(x, what = "timing")$total
+bdlvm_get_backdiag.lavaan <- function(x, ...)data.frame(max_chain_time = lavaan::inspect(x, what = "timing")$total)
 
 bdlvm_get_stats <- function(x, ...) {
   UseMethod("bdlvm_get_stats", x)
