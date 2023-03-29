@@ -1,3 +1,22 @@
+get_term_hrchy <- function(x) {
+  UseMethod("get_term_hrchy", x)
+}
+
+#' @method get_term_hrchy bform
+#' @export
+get_term_hrchy.bform <- function(x)get_term_hrchy(brmsterms(x))
+#' @method get_term_hrchy mvbrmsterms
+#' @export
+get_term_hrchy.mvbrmsterms <- function(x)dplyr::bind_rows(purrr::map(x$terms, get_term_hrchy))
+#' @method get_term_hrchy brmsterms
+#' @export
+get_term_hrchy.brmsterms <- function(x)dplyr::tibble(
+  resp = all.vars(x$respform),
+  term = unique(as.vector(unlist(sapply(x$dpars, get_term_hrchy)))))
+#' @method get_term_hrchy btl
+#' @export
+get_term_hrchy.btl <- function(x)c("1", all.vars(x$formula))
+
 brmsh_constprior <- function(x){
   if(is.numeric(x))return(paste0("constant(", x, ")"))
   x
@@ -36,11 +55,13 @@ brmsh_get_formulas <- function(x) {
 #'   brmsh_pp_iter(pars)
 #' }
 brmsh_pp_iter <- function(brmsfit_obj) {
-  forms_brms <- brmsh_get_formulas(brmsfit_obj$formula)
-  forms_brms <- depmat_ordlist(formlst_depmat(forms_brms))
+  terms_obj <- get_term_hrchy(brmsfit_obj$formula)
+  lhs_vars <- unique(terms_obj$resp)
+
+  forms_brms <- apply(terms_obj, 1, \(x)as.formula(paste(x[1], "~", x[2]))) %>%
+    formlst_depmat %>% depmat_ordlist
   forms_brms[[1]] <- forms_brms[[1]][forms_brms[[1]] != "..FILLERforSAMPLING"]
 
-  lhs_vars <- unlist(forms_brms)
   init_frame <- brmsfit_obj$data
   init_frame <- cbind(init_frame[,setdiff(colnames(init_frame),lhs_vars),
                                  drop=FALSE],
@@ -64,3 +85,35 @@ brmsh_pp_iter <- function(brmsfit_obj) {
   }
   pred_frames
 }
+
+# old version !!!
+# brmsh_pp_iter <- function(brmsfit_obj) {
+#   forms_brms <- brmsh_get_formulas(brmsfit_obj$formula)
+#   forms_brms <- depmat_ordlist(formlst_depmat(forms_brms))
+#   forms_brms[[1]] <- forms_brms[[1]][forms_brms[[1]] != "..FILLERforSAMPLING"]
+#
+#   lhs_vars <- unlist(forms_brms)
+#
+#   init_frame <- brmsfit_obj$data
+#   init_frame <- cbind(init_frame[,setdiff(colnames(init_frame),lhs_vars),
+#                                  drop=FALSE],
+#                       init_frame[,lhs_vars])
+#
+#   n_row <- nrow(init_frame)
+#   n_iter <- nrow(brms:::as.data.frame.brmsfit(brmsfit_obj))
+#   pred_frames <- list()
+#
+#   for(i in 1:n_iter) {
+#     pred_frames[[i]] <- init_frame
+#     for(v in forms_brms) {
+#       array(brms::posterior_predict(
+#         brmsfit_obj,
+#         pred_frames[[i]],
+#         resp = v,
+#         draw_ids = i
+#       ), dim = c(1, n_row, length(v))
+#       )[1,,] -> pred_frames[[i]][,v]
+#     }
+#   }
+#   pred_frames
+# }

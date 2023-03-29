@@ -1,5 +1,35 @@
 update_renv <- function(){renv::purge("lunafuns");renv::hydrate()}
 
+#' @export ylppa
+ylppa <- function(x, ...) {
+  dots <- list(...)
+  map(dots, \(z)if(!is.function(z))stop("... must only contain functions"))
+  setNames(map(dots, \(z)z(x)),
+           sapply(as.list(substitute(list(...)))[-1], deparse))
+}
+
+#' @export transbind
+transbind <- function(...)purrr::map(purrr::list_transpose(list(...)), dplyr::bind_rows)
+
+#' @export parallel_lists
+parallel_lists <- function(..., n_args = 2) {
+  dots <- substitute(list(...))[-1]
+  n <- length(dots)
+  if(!identical(n%%n_args, 0))stop("dots length must be a multiple of n_args")
+  pos <- seq_len(n/n_args)
+  out <- list()
+  length(out) <- n_args
+
+  for(i in pos) {
+    for(j in seq_len(n_args)) {
+      out[[j]][[i]] <- dots[[n_args*(i-1) + j]]
+    }
+  }
+
+  names(out) <- paste0("arg", seq_len(n_args))
+  out
+}
+
 #' @export `%p0%`
 `%p0%` <- function(x, y){paste0(x, y)}
 
