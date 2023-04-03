@@ -407,11 +407,21 @@ bdlvm_lavaan <- function(formula, model_obj, data_obj, ...) {
 
 #' @export bdlvm_blavaan
 bdlvm_blavaan <- function(formula, model_obj, data_obj, ...,
-                          n.chains = 4, bcontrol = list(refresh = 0)) {
-  fit_obj <- \(x)blavaan::blavaan(formula, data = x,
-                                  n.chains = n.chains, bcontrol = bcontrol, ...)
+                          target = "stan", n.chains = 4, bcontrol = list(refresh = 0)) {
+
   data_obj$datasets$generated <- purrr::map(data_obj$datasets$generated,
                                             \(x)x[,!names(x) %in% model_obj$lv_names])
+
+  if("fit" %in% names(bcontrol))stop("fit argument is reserved for internal use with stancond/stanclassic targets")
+  if(target %in% c("stancond", "stanclassic")) {
+    compiled <- blavaan::blavaan(formula, data = data_obj$datasets$generated[[1]], n.chains = 1,
+                                 sample = 2, adapt = 0, burnin = 1, bcontrol = list(refresh = 0),
+                                 target = target)@external$mcmcout
+    bcontrol <- c(bcontrol, fit = compiled)
+  }
+
+  fit_obj <- \(x)blavaan::blavaan(formula, data = x, target = target,
+                                    n.chains = n.chains, bcontrol = bcontrol, ...)
   bdlvm_fit(fit_obj, data_obj$datasets, model_obj)
 }
 
@@ -474,14 +484,15 @@ bdlvm_get_stats.blavaan <- function(fit_obj, model_obj) {
   lv_names <- model_obj$lv_names
   i_names <- model_obj$i_names
 
-  lavaan::partable(fit_obj)[,c("lhs", "op", "rhs", "pxnames", "mat", "free", "est")] %>%
-    dplyr::group_by(mat) %>%
-    dplyr::transmute(lhs, op, rhs,
-                     est = ifelse(free == 0, est, NA_real_),
-                     variable = pxnames, pardim = dplyr::n()) %>%
-    dplyr::mutate(variable = ifelse(pardim!=1, variable, gsub(".{3}$", "", variable))) %>%
+  lavaan::partable(fit_obj)[,c("lhs", "op", "rhs", "pxnames", "free", "est")] %>%
+    dplyr::transmute(lhs, op, rhs, est = ifelse(free == 0, est, NA_real_),
+                     variable_type = gsub("\\[.+\\]$", "", pxnames),
+                     variable = pxnames) %>%
+    dplyr::group_by(variable_type) %>%
+    dplyr::mutate(pardim = n(),
+                  variable = ifelse(pardim == 1, variable_type, variable)) %>%
     dplyr::ungroup() %>%
-    dplyr::select(-mat, -pardim) %>%
+    dplyr::select(-pardim, -variable_type) %>%
     dplyr::left_join(summary(posterior::as_draws_rvars(fit_obj@external$mcmcout)),
                      by = "variable") %>%
     dplyr::transmute(variable = dplyr::case_when(
