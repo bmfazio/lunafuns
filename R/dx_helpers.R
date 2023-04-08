@@ -3,8 +3,6 @@ dxh_get_priors <- function(prev_fit, ad = 0.8) {
   # properly samples missing variables from brms model
   # initially hardcodes the single LV case but
   # should be simple to extend with some regex-fu
-  prev_fit <- with(prev_fit, brms::brm(formula, data, prior = prior,
-                                       stanvars = stanvars, chains = 0))
   new_code <- gsub(
     "// likelihood including constants",
     "vector[N_y1] Yl_y1 = Y_y1;\n" %p0%
@@ -14,13 +12,13 @@ dxh_get_priors <- function(prev_fit, ad = 0.8) {
       "target += normal_lpdf(Yl_y1 | mu_y1, sigma_y1);",
     gsub("vector\\[N_y1\\] mu_y1 = rep_vector\\(0\\.0, N_y1\\);", "",
          gsub("vector\\[N_y1\\] Yl_y1 = Y_y1;", "", brms::stancode(prev_fit))))
-  new_model <- rstan::stan_model(model_code = new_code)
+  new_model <- cmdstanr::cmdstan_model(cmdstanr::write_stan_file(new_code))
 
   prev_fit$model <- new_code
-  prev_fit$fit@stanmodel <- new_model
+  attributes(prev_fit$fit)$CmdStanModel <- new_model
   brms:::update.brmsfit(prev_fit, recompile = FALSE, sample_prior = "only",
                         chains = 4, iter = 2000, cores = 4, refresh = 0,
-                        control = list(adapt_delta = ad))
+                        backend = "cmdstanr", control = list(adapt_delta = ad))
 }
 
 #' @export dxh_prepare_plot_data
